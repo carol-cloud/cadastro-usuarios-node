@@ -151,5 +151,30 @@ router.post(
     }
   }
 );
+router.put('/usuario/:id', auth, async (req, res) => {
+  try {
+      const userId = req.query.id; 
+      const { nome, email } = req.body;
+
+    
+      if (!nome || !email) {
+          return res.status(400).json({ error: 'Nome ou email são obrigatórios.' });
+      }
+
+     
+      const query = 'UPDATE usuarios SET nome_usuario = $1, email = $2 WHERE id = $3 RETURNING nome_usuario AS nome, email';
+      const result = await pool.query(query, [nome, email, userId]);
+
+      if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Usuário não encontrado.' });
+      }
+
+      const updatedUser = result.rows[0];
+      res.status(200).json(updatedUser);
+  } catch (err) {
+      console.error(err.message);
+      res.status(500).json({ error: 'Erro no servidor.' });
+  }
+});
 
 module.exports = router;
