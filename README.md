@@ -15,7 +15,7 @@ Este é um projeto Node.js básico que se conecta a um banco de dados PostgreSQL
 
 ## Configuração
 
-Antes de executar o projeto, é necessário configurar algumas variáveis de ambiente para a conexão com o banco de dados PostgreSQL. Renomeie o arquivo `.env.example` para `.env` e insira as informações de conexão corretas:
+Antes de executar o projeto, é necessário configurar algumas variáveis de ambiente para a conexão com o banco de dados PostgreSQL. Crie o arquivo `.env` e insira as informações de conexão corretas:
 
 ```
 DB_USER=seu_usuario
