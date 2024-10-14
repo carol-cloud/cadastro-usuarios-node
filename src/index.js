@@ -8,7 +8,7 @@ const cors = require('cors');
 const app = express();
 
 app.use(cors({
-    origin: 'http://localhost:3000', // Permite requisições da aplicação React
+    origin: 'http://localhost:3000', 
   }));
   
 app.use(bodyParser.json());
