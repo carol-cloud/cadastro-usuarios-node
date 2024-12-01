@@ -8,32 +8,53 @@ const auth = require("../../middleware/auth");
 const router = express.Router();
 
 router.post("/verify-token", async (req, res) => {
-    try {
-      const token = req.header("x-auth-token");
-      if (!token) return res.json(false);
-  
-      const verified = jwt.verify(token, process.env.JWT_SECRET);
-      if (!verified) return res.json(false);
-      
-      const query = 'SELECT * FROM usuarios WHERE id_colaborador = $1';
-      const result = await pool.query(query, [verified.id]);
-      const user = result.rows[0];
-      
-      if (!user) return res.json(false);
-  
-      return res.json(true);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+  try {
+    const token = req.header("x-auth-token");
+    if (!token) return res.json(false);
 
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    if (!verified) return res.json(false);
+
+    const query = 'SELECT * FROM usuarios WHERE id_colaborador = $1';
+    const result = await pool.query(query, [verified.id]);
+    const user = result.rows[0];
+
+    if (!user) return res.json(false);
+
+    return res.json(true);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 router.get("/usuarios", auth, async (req, res) => {
   try {
-    const query = "SELECT nome_usuario AS nome, email FROM usuarios";
+    const query = "SELECT id, nome_usuario AS nome, email FROM usuarios";
     const result = await pool.query(query);
 
-    const users = result.rows;
-    res.status(200).json(users);
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: "Erro no servidor." });
+  }
+});
+
+router.get("/usuario", auth, async (req, res) => {
+  try {
+  
+    const userId = req.user.userId;
+
+    const query = `
+        SELECT id, nome_usuario, email, role  
+        FROM usuarios 
+        WHERE id = $1
+      `;
+    const result = await pool.query(query, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuário não encontrado." });
+    }
+
+    res.status(200).json(result.rows[0]);
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: "Erro no servidor." });
@@ -50,6 +71,10 @@ router.post(
     body("senha")
       .isLength({ min: 6 })
       .withMessage("Senha deve ter pelo menos 6 caracteres."),
+    body("role")
+      .optional()
+      .isIn(["administrador", "editor", "visualizador"])
+      .withMessage("Role inválido. Deve ser 'administrador', 'editor' ou 'visualizador'."),
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -57,7 +82,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nome_usuario, email, senha } = req.body;
+    const { nome_usuario, email, senha, role = "visualizador" } = req.body;
 
     try {
       const userCheck = await pool.query(
@@ -74,8 +99,8 @@ router.post(
       const hashedPassword = await bcrypt.hash(senha, 10);
 
       const newUser = await pool.query(
-        "INSERT INTO usuarios (nome_usuario, email, senha) VALUES ($1, $2, $3) RETURNING *",
-        [nome_usuario, email, hashedPassword]
+        "INSERT INTO usuarios (nome_usuario, email, senha, role) VALUES ($1, $2, $3, $4) RETURNING id, nome_usuario, email, role",
+        [nome_usuario, email, hashedPassword, role]
       );
 
       res.status(201).json(newUser.rows[0]);
@@ -86,16 +111,16 @@ router.post(
   }
 );
 
-router.delete("/usuario", auth, async (req, res) => {
+router.delete("/usuario/:id", auth, async (req, res) => {
   try {
-    const userEmail = req.body.email;
+    const userId = req.params.id; 
 
-    if (!userEmail) {
-      return res.status(400).json({ error: "Email do usuário não fornecido." });
+    if (!userId) {
+      return res.status(400).json({ error: "ID do usuário não fornecido." });
     }
 
-    const query = "DELETE FROM usuarios WHERE email = $1";
-    const result = await pool.query(query, [userEmail]);
+    const query = "DELETE FROM usuarios WHERE id = $1";
+    const result = await pool.query(query, [userId]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Usuário não encontrado." });
@@ -107,6 +132,7 @@ router.delete("/usuario", auth, async (req, res) => {
     res.status(500).json({ error: "Erro no servidor." });
   }
 });
+
 
 router.post(
   "/login",
@@ -151,30 +177,34 @@ router.post(
     }
   }
 );
+
 router.put('/usuario/:id', auth, async (req, res) => {
   try {
-      const userId = req.query.id; 
-      const { nome, email } = req.body;
+    const { id, nome, email, senha } = req.body; 
 
-    
-      if (!nome || !email) {
-          return res.status(400).json({ error: 'Nome ou email são obrigatórios.' });
-      }
+    if (!nome || !email || !senha ) {
+      return res.status(400).json({ error: 'Nome, email ou senha são obrigatórios.' });
+    }
 
-     
-      const query = 'UPDATE usuarios SET nome_usuario = $1, email = $2 WHERE id = $3 RETURNING nome_usuario AS nome, email';
-      const result = await pool.query(query, [nome, email, userId]);
+    const query = `
+      UPDATE usuarios 
+      SET nome_usuario = $1, email = $2, senha = $3
+      WHERE id = $4 
+      RETURNING id, nome_usuario AS nome, email, role
+    `;
+    const result = await pool.query(query, [nome, email, senha, id]);
 
-      if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'Usuário não encontrado.' });
-      }
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
 
-      const updatedUser = result.rows[0];
-      res.status(200).json(updatedUser);
+    const updatedUser = result.rows[0];
+    res.status(200).json(updatedUser);
   } catch (err) {
-      console.error(err.message);
-      res.status(500).json({ error: 'Erro no servidor.' });
+    console.error(err.message);
+    res.status(500).json({ error: 'Erro no servidor.' });
   }
 });
+
 
 module.exports = router;
